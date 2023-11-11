@@ -4,7 +4,8 @@ Your project's description...
 ## Environments
 - Preview: [https://main--aemesddemo--frappierer.hlx.page/](https://main--aemesddemo--frappierer.hlx.page/)
 - Live: [https://main--aemesddemo--frappierer.hlx.live/](https://main--aemesddemo--frappierer.hlx.live/)
-
+- Preview: [https://main--aemesddemo--frappierer.hlx.page/](https://main--aemesddemo--frappierer.hlx.page/)
+- Live: [https://main--aemesddemo--frappierer.hlx.live/](https://main--aemesddemo--frappierer.hlx.live/)
 ## Installation
 
 ```sh
