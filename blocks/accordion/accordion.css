@@ -1,0 +1,19 @@
+/* Styling for the accordion headers */
+.accordion-header {
+  background-color: #f7f7f7;
+  cursor: pointer;
+  padding: 10px;
+  border: 1px solid #ddd;
+}
+
+/* Initially hide the accordion content */
+.accordion-content {
+  display: none;
+  padding: 10px;
+  border: 1px solid #ddd;
+}
+
+/* Styling for active accordion header */
+.active-header {
+  background-color: #e7e7e7;
+}

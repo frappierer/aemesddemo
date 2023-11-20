@@ -1,0 +1,55 @@
+.carousel {
+  display: flex;
+  flex-direction: column;
+  max-width: 100%;
+  position: relative;
+}
+
+
+
+.carousel div.active {
+  display: flex; /* Show the active slide */
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Styles for the image within the slide */
+.carousel div.active img {
+  max-width: 100%;
+  height: auto;
+  margin-bottom: 0.5em;
+}
+
+/* Styles for the caption and description */
+.carousel-caption,
+.carousel-description {
+  text-align: center;
+  margin-top: 0.5em;
+}
+
+/* Styling for the navigation buttons */
+.carousel-control-prev,
+.carousel-control-next {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  background-color: #0044cc; /* Example button color */
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  cursor: pointer;
+  font-size: 1.5em;
+}
+
+.carousel-control-prev {
+  left: 10px;
+}
+
+.carousel-control-next {
+  right: 10px;
+}
+
+@media (min-width: 768px) {
+  /* Responsive adjustments as needed */
+}
