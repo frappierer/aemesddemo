@@ -93,19 +93,15 @@ jobs:
           npm install -g @openai/codex
           
       - name: 4. Execute Main AI and Git Logic
-        id: main_script # Give the step an ID to reference its outputs later
+        id: main_script
         shell: bash
         run: |
-          # Fix "dubious ownership" error by running this in the same script.
-          # We use the GITHUB_WORKSPACE variable for maximum reliability.
+          # FIX: This command MUST be in the same step as the git commands.
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
           # The entire logic script from GitLab is placed here.
-          # It will use the environment variables defined in the `env:` block above.
-          
           echo "========================================================================"
           echo "=== 1. INITIAL SETUP & BRANCHING ==="
-          # ...the rest of your script remains unchanged...
           echo "========================================================================"
           echo "Received Ticket ID: $TICKET_ID"
           FEATURE_BRANCH_NAME="feature/$TICKET_ID"
@@ -113,7 +109,6 @@ jobs:
           echo "Default repository branch: $DEFAULT_BRANCH"
           
           echo "Creating and switching to feature branch: $FEATURE_BRANCH_NAME from origin/$DEFAULT_BRANCH..."
-          # The checkout action already fetched the branches, so we can create our new one.
           git checkout -b "$FEATURE_BRANCH_NAME" "origin/$DEFAULT_BRANCH"
           
           echo "========================================================================"
@@ -150,10 +145,22 @@ jobs:
                   CURL_AUTH_OPTS+=("-u" "${JIRA_API_USER}:${JIRA_API_TOKEN}"); 
                 fi
                 HTTP_STATUS=$(curl "${CURL_HTTP_OPTS[@]}" "${CURL_AUTH_OPTS[@]}" "$IMG_URL")
+                
+                # --- START OF NEW VALIDATION LOGIC ---
                 if [ "$HTTP_STATUS" -ge 200 ] && [ "$HTTP_STATUS" -lt 300 ] && [ -s "$FINAL_IMAGE_NAME_IN_CI" ]; then
-                  echo "Image ${IMAGE_INDEX} downloaded successfully as $FINAL_IMAGE_NAME_IN_CI (Original: $ORIGINAL_FILENAME_FROM_JIRA, HTTP Status: $HTTP_STATUS)"
-                  CODEX_CMD_ARGS+=("-i" "$FINAL_IMAGE_NAME_IN_CI")
-                  DOWNLOADED_IMAGE_FILES_COUNT=$((DOWNLOADED_IMAGE_FILES_COUNT + 1))
+                  MIME_TYPE=$(file --mime-type -b "$FINAL_IMAGE_NAME_IN_CI")
+                  echo "Validation: Downloaded file reports MIME type: $MIME_TYPE"
+                  
+                  if [[ "$MIME_TYPE" =~ ^image\/(png|jpeg|webp|gif)$ ]]; then
+                    echo "Image ${IMAGE_INDEX} is a valid image type. Adding to Codex."
+                    CODEX_CMD_ARGS+=("-i" "$FINAL_IMAGE_NAME_IN_CI")
+                    DOWNLOADED_IMAGE_FILES_COUNT=$((DOWNLOADED_IMAGE_FILES_COUNT + 1))
+                  else
+                    echo "ERROR: Image ${IMAGE_INDEX} is not a valid image (MIME: $MIME_TYPE). It is likely an auth error page from Jira. Skipping file."
+                    head -c 300 "$FINAL_IMAGE_NAME_IN_CI"; echo "" # Print file head for debugging
+                    rm -f "$FINAL_IMAGE_NAME_IN_CI" # Clean up invalid file
+                  fi
+                # --- END OF NEW VALIDATION LOGIC ---
                 else
                   echo "Error downloading image ${IMAGE_INDEX} (Original: $ORIGINAL_FILENAME_FROM_JIRA) from $IMG_URL (HTTP Status: $HTTP_STATUS)."
                   if [ -f "$FINAL_IMAGE_NAME_IN_CI" ]; then 
@@ -198,13 +205,11 @@ jobs:
 
           if [ -n "$GIT_STATUS_OUTPUT" ]; then
             echo "Changes detected. Staging, committing, and pushing to $FEATURE_BRANCH_NAME..."
-            # Using the PAT provided to the checkout action allows this push to work
             git add -A
             COMMIT_MESSAGE="feat($TICKET_ID): Apply AI-generated changes for $TICKET_ID [skip ci]"
             git commit -m "$COMMIT_MESSAGE"
             git push -u origin "$FEATURE_BRANCH_NAME"
             echo "Pushed changes to new branch '$FEATURE_BRANCH_NAME'."
-            # Set an output variable for the next step
             echo "changes_pushed=true" >> $GITHUB_OUTPUT
           else
             echo "No file changes were detected. Skipping commit and notification."
