@@ -1,0 +1,89 @@
+/* Bild Kacheln (image tiles) block */
+
+/* block base layout */
+main .bild-kacheln {
+  /* grid with three columns on desktop */
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* ensure markup that is not yet transformed (li-less) also displays correctly */
+main .bild-kacheln > div {
+  display: contents;
+}
+
+main .bild-kacheln li {
+  background-color: var(--background-color, #f5f7f9);
+  border: 1px solid var(--highlight-background-color, #e0e0e0);
+  padding: 32px 24px;
+  box-sizing: border-box;
+  position: relative;
+  transition: background-color .2s ease, box-shadow .2s ease;
+}
+
+main .bild-kacheln li:hover,
+main .bild-kacheln li:focus-within {
+  background-color: var(--highlight-background-color, #f0f2f4);
+  box-shadow: 0 0 0 4px rgba(0, 76, 151, 0.2);
+}
+
+main .bild-kacheln .tile-link {
+  /* make entire tile clickable */
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+}
+
+main .bild-kacheln h3 {
+  margin: 0 0 8px;
+  font-size: 1.3rem;
+  line-height: 1.2;
+}
+
+main .bild-kacheln .tile-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 500;
+}
+
+/* Arrow indicator using pseudo element */
+main .bild-kacheln .tile-cta::after {
+  content: '\203A'; /* › */
+  font-size: 1.2em;
+  transition: transform .2s ease;
+}
+
+main .bild-kacheln li:hover .tile-cta::after {
+  transform: translateX(4px);
+}
+
+/* Responsiveness */
+@media (max-width: 1023px) {
+  main .bild-kacheln {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 599px) {
+  main .bild-kacheln {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Screenreader-only title */
+.bild-kacheln .sr-only {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
