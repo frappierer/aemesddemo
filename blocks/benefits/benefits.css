@@ -1,0 +1,71 @@
+/* Benefits – Bild Kacheln (image tiles) */
+
+.benefits > .benefits-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 24px;
+}
+
+/* Mobile: one tile per row */
+@media (max-width: 599px) {
+  .benefits > .benefits-list {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Tablet: two tiles per row */
+@media (min-width: 600px) and (max-width: 899px) {
+  .benefits > .benefits-list {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* Desktop: three tiles per row (default) */
+@media (min-width: 900px) {
+  .benefits > .benefits-list {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+.benefits .benefits-tile {
+  background: var(--overlay-background-color);
+  border: 1px solid var(--highlight-background-color);
+  padding: 24px;
+  transition: background 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+}
+
+.benefits .benefits-tile:hover,
+.benefits .benefits-tile:focus-within {
+  background: var(--background-color);
+  box-shadow: 0 0 0 4px var(--link-color) inset;
+  outline: none;
+}
+
+.benefits .benefits-link {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  color: inherit;
+  text-decoration: none;
+}
+
+.benefits .benefits-link:hover {
+  text-decoration: none;
+}
+
+.benefits .benefits-link h3,
+.benefits .benefits-link h2,
+.benefits .benefits-link h4,
+.benefits .benefits-link p:first-child {
+  margin-top: 0;
+}
+
+.benefits .benefits-tile picture img {
+  width: 100%;
+  height: auto;
+}
