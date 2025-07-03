@@ -52,11 +52,11 @@ jobs:
       
       # Logic to handle variables from either manual trigger (inputs) or API trigger (client_payload)
       # with fallbacks to default values.
-      CODEX_PROMPT: ${{ github.event.inputs.CODEX_PROMPT || github.event.client_payload.CODEX_PROMPT || 'Default prompt: Create a simple placeholder file.' }}
-      TICKET_ID: ${{ github.event.inputs.TICKET_ID || github.event.client_payload.TICKET_ID || 'default-ticket-id' }}
-      CODEX_MODEL: ${{ github.event.inputs.CODEX_MODEL || github.event.client_payload.CODEX_MODEL || 'o3' }}
-      JIRA_IMAGE_URLS: ${{ github.event.inputs.JIRA_IMAGE_URLS || github.event.client_payload.JIRA_IMAGE_URLS || '' }}
-      JIRA_IMAGE_FILENAMES: ${{ github.event.inputs.JIRA_IMAGE_FILENAMES || github.event.client_payload.JIRA_IMAGE_FILENAMES || '' }}
+      CODEX_PROMPT: ${{ github.event.inputs.CODEX_PROMPT || github.event.client_payload.CODEX_PROMPT || "Default prompt: Create a simple placeholder file." }}
+      TICKET_ID: ${{ github.event.inputs.TICKET_ID || github.event.client_payload.TICKET_ID || "default-ticket-id" }}
+      CODEX_MODEL: ${{ github.event.inputs.CODEX_MODEL || github.event.client_payload.CODEX_MODEL || "o3" }}
+      JIRA_IMAGE_URLS: ${{ github.event.inputs.JIRA_IMAGE_URLS || github.event.client_payload.JIRA_IMAGE_URLS || "" }}
+      JIRA_IMAGE_FILENAMES: ${{ github.event.inputs.JIRA_IMAGE_FILENAMES || github.event.client_payload.JIRA_IMAGE_FILENAMES || "" }}
 
       # GitHub-specific environment variables for use in the script
       GH_REPO: ${{ github.repository }}
