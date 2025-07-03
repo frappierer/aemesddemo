@@ -94,6 +94,7 @@ jobs:
           
       - name: 4. Execute Main AI and Git Logic
         id: main_script # Give the step an ID to reference its outputs later
+        shell: bash
         run: |
           # Fix "dubious ownership" error by running this in the same script.
           # We use the GITHUB_WORKSPACE variable for maximum reliability.
@@ -213,6 +214,7 @@ jobs:
       - name: 5. Notify N8N to Create Pull Request
         # This step only runs if the previous step actually pushed changes.
         if: steps.main_script.outputs.changes_pushed == 'true'
+        shell: bash
         run: |
           echo "========================================================================"
           echo "=== 6. NOTIFYING N8N FOR PULL REQUEST ==="
