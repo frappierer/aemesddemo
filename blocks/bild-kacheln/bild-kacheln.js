@@ -81,14 +81,6 @@ export default function decorate(block) {
     // Move original row children into li
     while (row.firstChild) li.append(row.firstChild);
 
-    // Optimize images found inside the tile
-    li.querySelectorAll('img').forEach((img) => {
-      const picture = img.closest('picture');
-      if (picture) {
-        picture.replaceWith(createOptimizedPicture(img.src, img.alt, false, [{ width: '750' }]));
-      }
-    });
-
     // If tile contains a link make tile clickable (full-area anchor)
     wrapInLink(li);
 
@@ -98,6 +90,9 @@ export default function decorate(block) {
 
     ul.append(li);
   });
+
+  // Process all images at once after structure is built (similar to cards approach)
+  ul.querySelectorAll('img').forEach((img) => img.closest('picture').replaceWith(createOptimizedPicture(img.src, img.alt, false, [{ width: '750' }])));
 
   // Clear block and append processed list
   block.textContent = '';

@@ -64,6 +64,20 @@
   transform: translateY(-2px);
 }
 
+/* Image styling */
+.bild-kacheln-tile img {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  margin-bottom: 16px;
+}
+
+.bild-kacheln-tile picture {
+  line-height: 0;
+  margin-bottom: 16px;
+}
+
 .bild-kacheln-tile h3,
 .bild-kacheln-tile h2,
 .bild-kacheln-tile h4 {
