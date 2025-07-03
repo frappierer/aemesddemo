@@ -19,7 +19,7 @@ export default function decorateCarousel(block) {
     const img = slide.querySelector('img');
     if (img) {
       // Replace img with optimized picture element
-      const picture = createOptimizedPicture(img.src, img.alt, false, [{ width: '750' }]);
+      const picture = createOptimizedPicture(img.src, img.alt, false, [{ media: '(min-width: 600px)', width: '2000' }, { width: '750' }]);
       img.replaceWith(picture);
     }
   });

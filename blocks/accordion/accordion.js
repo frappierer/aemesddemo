@@ -11,7 +11,7 @@ export default function decorate(block) {
     content.querySelectorAll('img').forEach((img) => {
       const picture = img.closest('picture');
       if (picture) {
-        picture.replaceWith(createOptimizedPicture(img.src, img.alt, false, [{ width: '750' }]));
+        picture.replaceWith(createOptimizedPicture(img.src, img.alt, false, [{ media: '(min-width: 600px)', width: '2000' }, { width: '750' }]));
       }
     });
 
