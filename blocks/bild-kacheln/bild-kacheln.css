@@ -1,51 +1,58 @@
 /* Bild Kacheln (Image-Tiles) block
  * -----------------------------------------------------------------------------
- * Provides a modular grid of tiles that can be used to highlight key topics,
- * products or links. The block is fully responsive:
- *   – 3 tiles per row on desktop (≥900 px)
- *   – 2 tiles per row on tablet (≥600 px and <900 px)
- *   – 1 tile per row on mobile (<600 px)
+ * Provides a two-column layout with a large image on the left and stacked tiles
+ * on the right. Design matches the provided mockup:
+ *   – Large image taking up left side (60% width)
+ *   – Three tiles stacked vertically on right side (40% width)
+ *   – Responsive design that stacks on mobile
  *
  * Author expectation (Franklin notation):
  * | Bild Kacheln |
  * | ------------ |
+ * | Main Image   |
  * | Tile 1       |
  * | Tile 2       |
- * | …            |
- *
- * Each table row becomes a tile element. If the row contains a link the
- * complete tile is rendered as anchor enabling full-area click / tap support.
+ * | Tile 3       |
  * -------------------------------------------------------------------------- */
 
-/* Container grid */
+/* Container layout */
 .bild-kacheln {
   display: grid;
-  gap: 24px;
+  grid-template-columns: 1.5fr 1fr;
+  gap: 0;
+  min-height: 400px;
+  border-radius: 8px;
+  overflow: hidden;
 }
 
-/* Breakpoints */
-@media (min-width: 900px) {
-  .bild-kacheln {
-    grid-template-columns: repeat(3, 1fr);
-  }
+/* Large image container (first tile) */
+.bild-kacheln-tile:first-child {
+  grid-row: 1 / -1;
+  position: relative;
+  padding: 0;
+  border: none;
+  background: none;
 }
 
-@media (min-width: 600px) and (max-width: 899px) {
-  .bild-kacheln {
-    grid-template-columns: repeat(2, 1fr);
-  }
+.bild-kacheln-tile:first-child img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  aspect-ratio: unset;
+  margin: 0;
 }
 
-@media (max-width: 599px) {
-  .bild-kacheln {
-    grid-template-columns: 1fr;
-  }
+.bild-kacheln-tile:first-child picture {
+  height: 100%;
+  margin: 0;
+  display: block;
 }
 
-/* Tile element */
-.bild-kacheln-tile {
+/* Tiles container (right side) */
+.bild-kacheln-tile:not(:first-child) {
   background: var(--background-color, #f7f9fa);
   border: 1px solid var(--highlight-background-color, #ececec);
+  border-left: none;
   padding: 32px 24px;
   text-decoration: none;
   color: inherit;
@@ -54,60 +61,83 @@
   justify-content: center;
   transition: box-shadow .3s ease, transform .3s ease;
   position: relative;
-  /* Ensure the tile is focusable when rendered as <div> (without link). */
   outline: none;
+  margin: 0;
 }
 
-.bild-kacheln-tile:hover,
-.bild-kacheln-tile:focus {
+.bild-kacheln-tile:not(:first-child):hover,
+.bild-kacheln-tile:not(:first-child):focus {
   box-shadow: 0 4px 12px rgba(0, 0, 0, .08);
   transform: translateY(-2px);
 }
 
-/* Image styling */
-.bild-kacheln-tile img {
-  width: 100%;
-  height: auto;
-  aspect-ratio: 4 / 3;
-  object-fit: cover;
-  margin-bottom: 16px;
+/* Remove borders between stacked tiles */
+.bild-kacheln-tile:not(:first-child):not(:last-child) {
+  border-bottom: none;
 }
 
-.bild-kacheln-tile picture {
-  line-height: 0;
-  margin-bottom: 16px;
-}
-
+/* Tile headings */
 .bild-kacheln-tile h3,
 .bild-kacheln-tile h2,
 .bild-kacheln-tile h4 {
   margin: 0 0 12px;
-  font-size: 1.25rem;
+  font-size: 1.5rem;
   line-height: 1.3;
+  font-weight: 700;
+  color: var(--heading-color, #333);
 }
 
 .bild-kacheln-tile-title {
   margin: 0 0 12px;
+  font-size: 1.5rem;
+  font-weight: 700;
 }
 
-.bild-kacheln-tile .tile-link-label {
+/* Link styling */
+.bild-kacheln-tile .tile-link-label,
+.bild-kacheln-tile a {
   display: inline-flex;
   align-items: center;
   gap: 4px;
   color: var(--link-color, #005599);
   font-weight: 700;
   text-decoration: none;
+  font-size: 0.9rem;
 }
 
-.bild-kacheln-tile .tile-link-label::after {
+.bild-kacheln-tile .tile-link-label::after,
+.bild-kacheln-tile a::after {
   content: '\2192'; /* Right arrow */
   font-size: .875rem;
   transition: transform .3s ease;
 }
 
 .bild-kacheln-tile:hover .tile-link-label::after,
-.bild-kacheln-tile:focus .tile-link-label::after {
+.bild-kacheln-tile:focus .tile-link-label::after,
+.bild-kacheln-tile:hover a::after,
+.bild-kacheln-tile:focus a::after {
   transform: translateX(2px);
+}
+
+/* Mobile responsiveness */
+@media (max-width: 768px) {
+  .bild-kacheln {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+  
+  .bild-kacheln-tile:first-child {
+    grid-row: unset;
+    min-height: 250px;
+  }
+  
+  .bild-kacheln-tile:not(:first-child) {
+    border-left: 1px solid var(--highlight-background-color, #ececec);
+  }
+  
+  .bild-kacheln-tile:not(:first-child):not(:last-child) {
+    border-bottom: 1px solid var(--highlight-background-color, #ececec);
+  }
 }
 
 /* Visually hidden (screen-reader only) heading */
@@ -119,6 +149,6 @@
   margin: -1px;
   overflow: hidden;
   clip: rect(0, 0, 0, 0);
-  white-space: nowrap; /* added line */
+  white-space: nowrap;
   border: 0;
 }
