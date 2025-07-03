@@ -91,8 +91,16 @@ export default function decorate(block) {
     ul.append(li);
   });
 
-  // Process all images at once after structure is built (similar to cards approach)
-  ul.querySelectorAll('img').forEach((img) => img.closest('picture').replaceWith(createOptimizedPicture(img.src, img.alt, false, [{ width: '750' }])));
+  // Process all images at once after structure is built (use default breakpoints for proper img element creation)
+  ul.querySelectorAll('img').forEach((img) => {
+    const picture = img.closest('picture');
+    if (picture) {
+      picture.replaceWith(createOptimizedPicture(img.src, img.alt, false, [{ media: '(min-width: 600px)', width: '2000' }, { width: '750' }]));
+    } else {
+      // If img is not inside a picture, replace the img directly
+      img.replaceWith(createOptimizedPicture(img.src, img.alt, false, [{ media: '(min-width: 600px)', width: '2000' }, { width: '750' }]));
+    }
+  });
 
   // Clear block and append processed list
   block.textContent = '';
