@@ -86,10 +86,7 @@ jobs:
 
       - name: 3. Configure Git and Install Codex CLI
         run: |
-          echo "Fixing git ownership for container..."
-          # This command is necessary to fix the "dubious ownership" error
-          # when running git commands inside a container.
-          git config --global --add safe.directory /github/workspace
+          # The ownership fix has been MOVED to the next step.
           
           echo "Configuring Git..."
           git config --global user.name "GitHub Actions Bot"
@@ -101,11 +98,16 @@ jobs:
       - name: 4. Execute Main AI and Git Logic
         id: main_script # Give the step an ID to reference its outputs later
         run: |
+          # Fix "dubious ownership" error by running this in the same script.
+          # We use the GITHUB_WORKSPACE variable for maximum reliability.
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
           # The entire logic script from GitLab is placed here.
           # It will use the environment variables defined in the `env:` block above.
           
           echo "========================================================================"
           echo "=== 1. INITIAL SETUP & BRANCHING ==="
+          # ...the rest of your script remains unchanged...
           echo "========================================================================"
           echo "Received Ticket ID: $TICKET_ID"
           FEATURE_BRANCH_NAME="feature/$TICKET_ID"
