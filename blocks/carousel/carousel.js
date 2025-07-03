@@ -7,7 +7,9 @@ export default function decorateCarousel(block) {
 
   // Function to change the display of slides
   function showSlide(index) {
-    slides.forEach(slide => slide.style.display = 'none'); // Hide all slides
+    slides.forEach((slide) => {
+      slide.style.display = 'none';
+    }); // Hide all slides
     slides[index].style.display = 'block'; // Show the new slide
     currentSlide = index;
   }
@@ -53,7 +55,5 @@ document.addEventListener('DOMContentLoaded', () => {
   const carouselBlock = document.querySelector('.carousel');
   if (carouselBlock) {
     decorateCarousel(carouselBlock);
-  } else {
-    console.error('Carousel block not found');
   }
 });

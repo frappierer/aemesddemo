@@ -8,7 +8,7 @@ export default function decorate(block) {
     content.classList.add('accordion-content');
 
     // Optimize any images within the content
-    content.querySelectorAll('img').forEach(img => {
+    content.querySelectorAll('img').forEach((img) => {
       const picture = img.closest('picture');
       if (picture) {
         picture.replaceWith(createOptimizedPicture(img.src, img.alt, false, [{ width: '750' }]));
@@ -20,7 +20,7 @@ export default function decorate(block) {
       // Check if the content is currently displayed
       const isContentVisible = content.style.display === 'block';
       // Hide all content elements
-      block.querySelectorAll('.accordion-content').forEach(cont => {
+      block.querySelectorAll('.accordion-content').forEach((cont) => {
         cont.style.display = 'none';
         cont.previousElementSibling.classList.remove('active-header');
       });
