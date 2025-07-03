@@ -226,16 +226,19 @@ jobs:
           FEATURE_BRANCH_NAME="feature/$TICKET_ID"
           LATEST_COMMIT_SHA=$(git rev-parse HEAD)
           
-          # --- START OF NEW LOGIC ---
-          # 1. Sanitize the branch name for the URL (replace '/' with '-')
+          # --- START OF CORRECTED URL LOGIC ---
+          # 1. Sanitize the branch name (replace '/' with '-'). This is still correct.
           SANITIZED_BRANCH_NAME=$(echo "$FEATURE_BRANCH_NAME" | sed 's/\//-/g')
 
-          # 2. Construct the predictable preview URL. Note the use of .hlx.page from your example.
-          # It combines the sanitized branch, repo name, and owner from the $GH_REPO variable.
-          PREVIEW_URL="https://""$SANITIZED_BRANCH_NAME""--""$(echo "$GH_REPO" | sed 's/\//--/g')"".hlx.page"
+          # 2. Extract owner and repo name from the GH_REPO variable (e.g., "frappierer/aemesddemo")
+          REPO_OWNER=$(echo "$GH_REPO" | cut -d'/' -f1)
+          REPO_NAME=$(echo "$GH_REPO" | cut -d'/' -f2)
+
+          # 3. Construct the predictable preview URL using the correct format.
+          PREVIEW_URL="https://$SANITIZED_BRANCH_NAME--$REPO_NAME--$REPO_OWNER.hlx.page"
           echo "Constructed Preview URL: $PREVIEW_URL"
 
-          # 3. Create the title and body for the pull request.
+          # 4. Create the title and body for the pull request.
           PR_TITLE="feat($TICKET_ID): Implement feature $TICKET_ID (AI Assisted)"
           PR_BODY=$(cat <<EOF
           This Pull Request was automatically generated to implement ticket **$TICKET_ID**.
@@ -246,9 +249,9 @@ jobs:
           Commit SHA: \`$LATEST_COMMIT_SHA\`
           EOF
           )
-          # --- END OF NEW LOGIC ---
+          # --- END OF CORRECTED URL LOGIC ---
 
-          # 4. We use environment variables set by GitHub Actions and pass the new PR Body.
+          # 5. We use environment variables set by GitHub Actions and pass the new PR Body.
           JSON_PAYLOAD=$(jq -n \
             --arg fb "$FEATURE_BRANCH_NAME" \
             --arg tb "$DEFAULT_BRANCH" \
