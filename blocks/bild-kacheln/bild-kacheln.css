@@ -1,0 +1,93 @@
+.bild-kacheln {
+  /* general spacing can be controlled via margins applied by the author */
+}
+
+/* visually hidden helper */
+.bild-kacheln .visually-hidden {
+  position: absolute !important;
+  height: 1px; width: 1px;
+  overflow: hidden;
+  clip: rect(1px, 1px, 1px, 1px);
+  white-space: nowrap;
+}
+
+/* --------------------------------------------------------------------- */
+/* Layout with image column                                              */
+/* --------------------------------------------------------------------- */
+
+.bild-kacheln.has-image .bild-kacheln-wrapper {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+}
+
+/* image column */
+.bild-kacheln .bild-kacheln-image picture img {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+}
+
+/* --------------------------------------------------------------------- */
+/* Tiles grid                                                            */
+/* --------------------------------------------------------------------- */
+
+.bild-kacheln-tiles {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 24px;
+}
+
+@media (min-width: 600px) {
+  .bild-kacheln:not(.has-image) .bild-kacheln-tiles {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (min-width: 900px) {
+  .bild-kacheln:not(.has-image) .bild-kacheln-tiles {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+/* When an image column is present the tiles are stacked vertically on desktop */
+.bild-kacheln.has-image .bild-kacheln-tiles {
+  display: flex;
+  flex-direction: column;
+}
+
+/* --------------------------------------------------------------------- */
+/* Tile Styles                                                           */
+/* --------------------------------------------------------------------- */
+
+.bild-kacheln-tile {
+  background-color: var(--overlay-background-color);
+  padding: 32px;
+  transition: background-color 0.2s ease, transform 0.2s ease;
+  display: flex;
+  align-items: flex-start;
+}
+
+.bild-kacheln-tile a {
+  color: inherit;
+  text-decoration: none;
+  display: block;
+  width: 100%;
+}
+
+.bild-kacheln-tile-title {
+  font-family: var(--heading-font-family);
+  font-size: var(--heading-font-size-s);
+  font-weight: 600;
+  margin: 0;
+}
+
+.bild-kacheln-tile:hover,
+.bild-kacheln-tile:focus-within {
+  background-color: var(--highlight-background-color);
+  transform: translateY(-4px);
+}
