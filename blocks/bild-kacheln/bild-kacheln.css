@@ -1,0 +1,110 @@
+/* Bild Kacheln (Image-Tiles) block
+ * -----------------------------------------------------------------------------
+ * Provides a modular grid of tiles that can be used to highlight key topics,
+ * products or links. The block is fully responsive:
+ *   – 3 tiles per row on desktop (≥900 px)
+ *   – 2 tiles per row on tablet (≥600 px and <900 px)
+ *   – 1 tile per row on mobile (<600 px)
+ *
+ * Author expectation (Franklin notation):
+ * | Bild Kacheln |
+ * | ------------ |
+ * | Tile 1       |
+ * | Tile 2       |
+ * | …            |
+ *
+ * Each table row becomes a tile element. If the row contains a link the
+ * complete tile is rendered as anchor enabling full-area click / tap support.
+ * -------------------------------------------------------------------------- */
+
+/* Container grid */
+.bild-kacheln {
+  display: grid;
+  gap: 24px;
+}
+
+/* Breakpoints */
+@media (min-width: 900px) {
+  .bild-kacheln {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (min-width: 600px) and (max-width: 899px) {
+  .bild-kacheln {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 599px) {
+  .bild-kacheln {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Tile element */
+.bild-kacheln-tile {
+  background: var(--background-color, #f7f9fa);
+  border: 1px solid var(--highlight-background-color, #ececec);
+  padding: 32px 24px;
+  text-decoration: none;
+  color: inherit;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  transition: box-shadow .3s ease, transform .3s ease;
+  position: relative;
+  /* Ensure the tile is focusable when rendered as <div> (without link). */
+  outline: none;
+}
+
+.bild-kacheln-tile:hover,
+.bild-kacheln-tile:focus {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, .08);
+  transform: translateY(-2px);
+}
+
+.bild-kacheln-tile h3,
+.bild-kacheln-tile h2,
+.bild-kacheln-tile h4 {
+  margin: 0 0 12px;
+  font-size: 1.25rem;
+  line-height: 1.3;
+}
+
+.bild-kacheln-tile-title {
+  margin: 0 0 12px;
+}
+
+.bild-kacheln-tile .tile-link-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--link-color, #005599);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.bild-kacheln-tile .tile-link-label::after {
+  content: '\2192'; /* Right arrow */
+  font-size: .875rem;
+  transition: transform .3s ease;
+}
+
+.bild-kacheln-tile:hover .tile-link-label::after,
+.bild-kacheln-tile:focus .tile-link-label::after {
+  transform: translateX(2px);
+}
+
+/* Visually hidden (screen-reader only) heading */
+.bild-kacheln-sr-only {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap; /* added line */
+  border: 0;
+}
