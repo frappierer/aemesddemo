@@ -1,55 +1,127 @@
 .carousel {
-  display: flex;
-  flex-direction: column;
-  max-width: 100%;
   position: relative;
+  width: 100%;
+  overflow: hidden;
+  background-color: var(--background-color, #f7f9fa);
 }
 
+.carousel-slides {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 200px;
+}
 
-
-.carousel div.active {
-  display: flex; /* Show the active slide */
+.carousel-slide {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  opacity: 0;
+  transition: opacity 0.3s ease-in-out;
+  display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-}
-
-/* Styles for the image within the slide */
-.carousel div.active img {
-  max-width: 100%;
-  height: auto;
-  margin-bottom: 0.5em;
-}
-
-/* Styles for the caption and description */
-.carousel-caption,
-.carousel-description {
   text-align: center;
-  margin-top: 0.5em;
+  padding: 1rem;
+  box-sizing: border-box;
 }
 
-/* Styling for the navigation buttons */
-.carousel-control-prev,
-.carousel-control-next {
+.carousel-slide picture,
+.carousel-slide img {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+}
+
+.carousel-slide.active {
+  opacity: 1;
+  position: relative;
+}
+
+.carousel-content {
+  max-width: 860px;
+  margin: 0 auto;
+  padding-top: 1rem;
+}
+
+.carousel-content h3 {
+  margin: 0.5rem 0;
+  font-size: 1.25rem;
+  color: var(--text-color, #222);
+}
+
+.carousel-content p {
+  margin: 0.5rem 0 1rem;
+  color: var(--text-color, #555);
+}
+
+.carousel-link {
+  color: var(--link-color, #04c);
+  font-weight: 600;
+  text-decoration: underline;
+}
+
+.carousel-controls {
   position: absolute;
   top: 50%;
+  left: 0;
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   transform: translateY(-50%);
-  background-color: #04c; /* Example button color */
-  color: white;
+  pointer-events: none;
+}
+
+.carousel-control {
+  background: var(--highlight-background-color, rgba(0, 0, 0, 0.5));
+  color: #fff;
   border: none;
-  padding: 10px 20px;
+  padding: 0.5rem 0.75rem;
+  font-size: 1.5rem;
   cursor: pointer;
-  font-size: 1.5em;
+  pointer-events: auto;
+  border-radius: 4px;
+  transition: background 0.2s ease-in-out;
 }
 
-.carousel-control-prev {
-  left: 10px;
+.carousel-control:focus-visible {
+  outline: 2px solid var(--link-color, #04c);
+  outline-offset: 2px;
 }
 
-.carousel-control-next {
-  right: 10px;
+.carousel-control:hover {
+  background: var(--link-color, #04c);
 }
 
-@media (min-width: 768px) {
-  /* Responsive adjustments as needed */
+.carousel-prev {
+  margin-left: 0.5rem;
+}
+
+.carousel-next {
+  margin-right: 0.5rem;
+}
+
+.carousel-pause {
+  position: absolute;
+  bottom: 0.75rem;
+  right: 0.75rem;
+  background: var(--highlight-background-color, rgba(0, 0, 0, 0.5));
+  font-size: 1rem;
+  transform: translateY(0);
+}
+
+@media (min-width: 600px) {
+  .carousel-content h3 {
+    font-size: 1.5rem;
+  }
+}
+
+@media (min-width: 900px) {
+  .carousel-content h3 {
+    font-size: 2rem;
+  }
 }
