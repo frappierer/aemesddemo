@@ -1,0 +1,249 @@
+name: Claude Full Auto (Autonomous)
+
+# -----------------------------------------------------------------------------
+# TRIGGER CONFIGURATION
+# -----------------------------------------------------------------------------
+# This workflow is triggered by a `repository_dispatch` event from N8N.
+# It can also be run manually via `workflow_dispatch` for testing.
+on:
+  workflow_dispatch:
+    inputs:
+      CLAUDE_PROMPT:
+        description: 'The main instruction/prompt for the AI. (For manual runs)'
+        required: true
+        default: 'Create a simple placeholder file called placeholder.md.'
+      TICKET_ID:
+        description: 'The Jira/Ticket ID for branch naming and commits.'
+        required: true
+        default: 'manual-ticket'
+      CLAUDE_MODEL:
+        description: 'The AI model to use (e.g., claude-3-5-sonnet-20240620).'
+        required: true
+        default: 'claude-3-5-sonnet-20240620'
+      JIRA_IMAGE_URLS:
+        description: 'Comma-separated list of image URLs from Jira.'
+        required: false
+      JIRA_IMAGE_FILENAMES:
+        description: 'Comma-separated list of original image filenames from Jira.'
+        required: false
+  repository_dispatch:
+    types: [claude-run] # N8N must send this event_type
+
+jobs:
+  claude-full-auto:
+    runs-on: ubuntu-latest
+    container: node:latest
+
+    # -----------------------------------------------------------------------------
+    # ENVIRONMENT VARIABLES
+    # -----------------------------------------------------------------------------
+    # These variables are populated by secrets and the dispatch payload from N8N.
+    env:
+      # Secrets (must be configured in repository settings: Settings > Secrets and variables > Actions)
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      N8N_MR_WEBHOOK_URL: ${{ secrets.N8N_PR_WEBHOOK_URL }}
+      JIRA_API_USER: ${{ secrets.JIRA_API_USER }}
+      JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+      CODEX_PUSH_TOKEN: ${{ secrets.CODEX_PUSH_TOKEN }} # PAT for pushing to a new branch
+
+      # Payload from N8N (or manual inputs as a fallback)
+      CLAUDE_PROMPT: |
+        ${{ github.event.inputs.CLAUDE_PROMPT || github.event.client_payload.CLAUDE_PROMPT }}
+      TICKET_ID: ${{ github.event.inputs.TICKET_ID || github.event.client_payload.TICKET_ID }}
+      CLAUDE_MODEL: ${{ github.event.inputs.CLAUDE_MODEL || github.event.client_payload.CLAUDE_MODEL }}
+      JIRA_IMAGE_URLS: ${{ github.event.inputs.JIRA_IMAGE_URLS || github.event.client_payload.JIRA_IMAGE_URLS }}
+      JIRA_IMAGE_FILENAMES: ${{ github.event.inputs.JIRA_IMAGE_FILENAMES || github.event.client_payload.JIRA_IMAGE_FILENAMES }}
+
+      # GitHub-specific context variables
+      GH_REPO: ${{ github.repository }}
+      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+
+    steps:
+      - name: 1. Install System Dependencies
+        run: |
+          echo "Updating package lists and installing dependencies..."
+          apt-get update -y
+          apt-get install -y --no-install-recommends curl jq sed file
+
+      - name: 2. Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          # A Personal Access Token (PAT) with repo write access is required to push a new branch.
+          # The default GITHUB_TOKEN has restricted permissions.
+          token: ${{ env.CODEX_PUSH_TOKEN }}
+          # Fetch all history to ensure we can branch from the latest default branch.
+          fetch-depth: 0
+
+      - name: 3. Configure Git and Install Claude Code CLI
+        run: |
+          echo "Configuring Git..."
+          git config --global user.name "GitHub Actions Bot"
+          git config --global user.email "actions-bot@github.com"
+          
+          echo "Installing @anthropic-ai/claude-code..."
+          npm install -g @anthropic-ai/claude-code
+          
+      - name: 4. Execute Main AI and Git Logic
+        id: main_script
+        shell: bash
+        run: |
+          # This command is required to fix ownership issues when running git inside a container.
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+          echo "========================================================================"
+          echo "=== 1. INITIAL SETUP & BRANCHING ==="
+          echo "========================================================================"
+          echo "Received Ticket ID: $TICKET_ID"
+          FEATURE_BRANCH_NAME="feature/$TICKET_ID"
+          echo "Target feature branch: $FEATURE_BRANCH_NAME"
+          echo "Creating and switching to feature branch from origin/$DEFAULT_BRANCH..."
+          git checkout -b "$FEATURE_BRANCH_NAME" "origin/$DEFAULT_BRANCH"
+          
+          echo "========================================================================"
+          echo "=== 2. IMAGE PROCESSING ==="
+          echo "========================================================================"
+          # Arguments for a truly autonomous run:
+          # --print:      Ensures Claude executes the prompt and exits without interaction.
+          # --model:      Specifies the AI model.
+          # --dangerously-skip-permissions: CRITICAL for automation. Allows Claude to edit files
+          #                                 and run tools without asking for confirmation.
+          CLAUDE_CMD_ARGS=("--print" "--model" "$CLAUDE_MODEL" "--dangerously-skip-permissions")
+          DOWNLOADED_IMAGE_FILES_COUNT=0
+          
+          if [ -n "$JIRA_IMAGE_URLS" ] && [ "$JIRA_IMAGE_URLS" != "none" ] && \
+             [ -n "$JIRA_IMAGE_FILENAMES" ] && [ "$JIRA_IMAGE_FILENAMES" != "none" ]; then
+            echo "Processing Jira image URLs and filenames..."
+            IFS=',' read -ra IMAGE_URL_ARRAY <<< "$JIRA_IMAGE_URLS"
+            IFS=',' read -ra IMAGE_FILENAME_ARRAY <<< "$JIRA_IMAGE_FILENAMES"
+            if [ "${#IMAGE_URL_ARRAY[@]}" -ne "${#IMAGE_FILENAME_ARRAY[@]}" ]; then
+              echo "Error: Mismatch between number of image URLs (${#IMAGE_URL_ARRAY[@]}) and filenames (${#IMAGE_FILENAME_ARRAY[@]}). Skipping image processing."
+            else
+              for (( i=0; i<${#IMAGE_URL_ARRAY[@]}; i++ )); do
+                IMAGE_INDEX=$((i + 1))
+                IMG_URL=$(echo "${IMAGE_URL_ARRAY[$i]}" | xargs) 
+                ORIGINAL_FILENAME_FROM_JIRA=$(echo "${IMAGE_FILENAME_ARRAY[$i]}" | xargs)
+                if [ -z "$IMG_URL" ] || [ -z "$ORIGINAL_FILENAME_FROM_JIRA" ]; then
+                  echo "Skipping empty image URL or filename at index $IMAGE_INDEX."
+                  continue
+                fi
+                SAFE_FILENAME_BASE=$(echo "$ORIGINAL_FILENAME_FROM_JIRA" | sed 's/[^a-zA-Z0-9._-]/_/g')
+                FINAL_IMAGE_NAME_IN_CI="jira_dl_image_${IMAGE_INDEX}_${SAFE_FILENAME_BASE}"
+                FINAL_IMAGE_NAME_IN_CI="${FINAL_IMAGE_NAME_IN_CI:0:100}"
+                echo "Downloading image ${IMAGE_INDEX} to $FINAL_IMAGE_NAME_IN_CI"
+                HTTP_STATUS=$(curl -sSL -w "%{http_code}" -o "$FINAL_IMAGE_NAME_IN_CI" -u "${JIRA_API_USER}:${JIRA_API_TOKEN}" "$IMG_URL")
+                if [ "$HTTP_STATUS" -ge 200 ] && [ "$HTTP_STATUS" -lt 300 ] && [ -s "$FINAL_IMAGE_NAME_IN_CI" ]; then
+                  MIME_TYPE=$(file --mime-type -b "$FINAL_IMAGE_NAME_IN_CI")
+                  if [[ "$MIME_TYPE" =~ ^image\/(png|jpeg|webp|gif)$ ]]; then
+                    echo "Image ${IMAGE_INDEX} is a valid image. Adding to Claude arguments."
+                    CLAUDE_CMD_ARGS+=("--image" "$FINAL_IMAGE_NAME_IN_CI")
+                    DOWNLOADED_IMAGE_FILES_COUNT=$((DOWNLOADED_IMAGE_FILES_COUNT + 1))
+                  else
+                    echo "ERROR: Image ${IMAGE_INDEX} is not a valid image (MIME: $MIME_TYPE). Skipping file."
+                    rm -f "$FINAL_IMAGE_NAME_IN_CI"
+                  fi
+                else
+                  echo "Error downloading image ${IMAGE_INDEX} (HTTP Status: $HTTP_STATUS)."
+                  if [ -f "$FINAL_IMAGE_NAME_IN_CI" ]; then rm -f "$FINAL_IMAGE_NAME_IN_CI"; fi
+                fi
+              done
+            fi
+            echo "Total images successfully added to arguments: $DOWNLOADED_IMAGE_FILES_COUNT"
+          else
+            echo "No Jira image URLs and/or filenames provided. Skipping image processing."
+          fi
+          
+          echo "========================================================================"
+          echo "=== 3. CLAUDE EXECUTION ==="
+          echo "========================================================================"
+          echo "Using model: $CLAUDE_MODEL"
+          echo "Final Claude command arguments: ${CLAUDE_CMD_ARGS[*]}"
+          echo "--- Passing full prompt from N8N to Claude's stdin ---"
+          
+          # Execute Claude non-interactively, passing the exact prompt received from N8N.
+          # N8N is the single source of truth for the prompt engineering.
+          claude "${CLAUDE_CMD_ARGS[@]}" <<< "$CLAUDE_PROMPT"
+          
+          echo "Claude execution complete."
+          
+          echo "========================================================================"
+          echo "=== 4. CLEANING UP DOWNLOADED IMAGES ===" 
+          echo "========================================================================"
+          if [ "$DOWNLOADED_IMAGE_FILES_COUNT" -gt 0 ]; then
+              echo "Removing $DOWNLOADED_IMAGE_FILES_COUNT downloaded Jira image(s)..."
+              rm -f jira_dl_image_* 
+              echo "Downloaded Jira images removed."
+          else
+              echo "No images were downloaded, skipping cleanup."
+          fi
+          
+          echo "========================================================================"
+          echo "=== 5. GIT OPERATIONS ===" 
+          echo "========================================================================"
+          echo "Checking for file changes made by Claude..."
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "Changes detected. Staging, committing, and pushing to $FEATURE_BRANCH_NAME..."
+            git add -A
+            COMMIT_MESSAGE="feat($TICKET_ID): Apply AI-generated changes [skip ci]"
+            git commit -m "$COMMIT_MESSAGE"
+            git push -u origin "$FEATURE_BRANCH_NAME"
+            echo "Pushed changes to new branch '$FEATURE_BRANCH_NAME'."
+            echo "changes_pushed=true" >> $GITHUB_OUTPUT
+          else
+            echo "No file changes were detected by 'git status'. Skipping commit and notification."
+            echo "changes_pushed=false" >> $GITHUB_OUTPUT
+          fi
+          
+      - name: 5. Notify N8N to Create Pull Request
+        if: steps.main_script.outputs.changes_pushed == 'true'
+        shell: bash
+        run: |
+          echo "========================================================================"
+          echo "=== 6. NOTIFYING N8N FOR PULL REQUEST ==="
+          echo "========================================================================"
+          FEATURE_BRANCH_NAME="feature/$TICKET_ID"
+          LATEST_COMMIT_SHA=$(git rev-parse HEAD)
+          REPO_OWNER=$(echo "$GH_REPO" | cut -d'/' -f1)
+          REPO_NAME=$(echo "$GH_REPO" | cut -d'/' -f2)
+          SANITIZED_BRANCH_NAME=$(echo "$FEATURE_BRANCH_NAME" | sed 's/\//-/g')
+          # This URL format is an example for a specific hosting provider (e.g., Franklin/HLX).
+          # You may need to adjust it based on your actual preview environment setup.
+          PREVIEW_URL="https://$SANITIZED_BRANCH_NAME--$REPO_NAME--$REPO_OWNER.hlx.page"
+          echo "Constructed Preview URL: $PREVIEW_URL"
+          
+          PR_TITLE="feat($TICKET_ID): Implement feature $TICKET_ID (AI Assisted)"
+          PR_BODY=$(cat <<EOF
+          This Pull Request was automatically generated by the Claude AI Developer to implement ticket **$TICKET_ID**.
+
+          ### URL for testing:
+          - $PREVIEW_URL
+
+          Commit SHA: \`$LATEST_COMMIT_SHA\`
+          EOF
+          )
+
+          JSON_PAYLOAD=$(jq -n \
+            --arg fb "$FEATURE_BRANCH_NAME" \
+            --arg tb "$DEFAULT_BRANCH" \
+            --arg tid "$TICKET_ID" \
+            --arg commitSha "$LATEST_COMMIT_SHA" \
+            --arg repo "$GH_REPO" \
+            --arg prTitle "$PR_TITLE" \
+            --arg prBody "$PR_BODY" \
+            '{source_branch: $fb, target_branch: $tb, ticket_id: $tid, commit_sha: $commitSha, repo: $repo, pull_request_title: $prTitle, pull_request_body: $prBody}')
+
+          if [ -z "$N8N_MR_WEBHOOK_URL" ]; then
+            echo "Warning: N8N_PR_WEBHOOK_URL secret is not set. Cannot notify N8N to create PR."
+          else
+            echo "Sending payload to N8N webhook..."
+            curl_response_code=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
+              -H "Content-Type: application/json" \
+              -d "$JSON_PAYLOAD" \
+              "$N8N_MR_WEBHOOK_URL")
+            
+            if [ "$curl_response_code" -ge 200 ] && [ "$curl_response_code" -lt 300 ]; then
+              echo "N8N notification sent successfully (HTTP $curl_response_code)."
+            else
+              echo "ERROR: N8N notification failed (HTTP $curl_response_code)."
+              # Optionally, you could fail the step here: exit 1
+            fi
+          fi
