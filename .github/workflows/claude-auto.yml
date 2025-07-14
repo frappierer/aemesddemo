@@ -35,22 +35,19 @@ jobs:
       JIRA_API_USER: ${{ secrets.JIRA_API_USER }}
       JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
       CODEX_PUSH_TOKEN: ${{ secrets.CODEX_PUSH_TOKEN }}
-
       CLAUDE_PROMPT: |
         ${{ github.event.inputs.CLAUDE_PROMPT || github.event.client_payload.CLAUDE_PROMPT }}
       TICKET_ID: ${{ github.event.inputs.TICKET_ID || github.event.client_payload.TICKET_ID }}
       CLAUDE_MODEL: ${{ github.event.inputs.CLAUDE_MODEL || github.event.client_payload.CLAUDE_MODEL }}
       JIRA_IMAGE_URLS: ${{ github.event.inputs.JIRA_IMAGE_URLS || github.event.client_payload.JIRA_IMAGE_URLS }}
       JIRA_IMAGE_FILENAMES: ${{ github.event.inputs.JIRA_IMAGE_FILENAMES || github.event.client_payload.JIRA_IMAGE_FILENAMES }}
-
       GH_REPO: ${{ github.repository }}
       DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
 
     steps:
       - name: 1. Install System Dependencies
         run: |
-          apt-get update -y
-          apt-get install -y --no-install-recommends curl jq sed file coreutils
+          apt-get update -y && apt-get install -y --no-install-recommends curl jq sed file
 
       - name: 2. Checkout Repository
         uses: actions/checkout@v4
@@ -63,7 +60,7 @@ jobs:
           git config --global user.name "GitHub Actions Bot"
           git config --global user.email "actions-bot@github.com"
           npm install -g @anthropic-ai/claude-code
-      
+
       - name: 4. Set Workspace Permissions for Non-Root User
         run: |
           chown -R node:node "$GITHUB_WORKSPACE"
@@ -81,108 +78,92 @@ jobs:
           git checkout -b "$FEATURE_BRANCH_NAME" "origin/$DEFAULT_BRANCH"
           
           echo "========================================================================"
-          echo "=== 2. CLAUDE EXECUTION (WITH IMAGE STREAMING) ==="
+          echo "=== 2. IMAGE PROCESSING ==="
           echo "========================================================================"
-          # Hold the original prompt from N8N in a variable.
-          TASK_PROMPT="$CLAUDE_PROMPT"
+          # MODIFIED: Command arguments no longer include the faulty --image flag.
           CLAUDE_CMD_ARGS=("--print" "--model" "$CLAUDE_MODEL" "--dangerously-skip-permissions")
+          IMAGES_WERE_DOWNLOADED=false
           
+          if [ -n "$JIRA_IMAGE_URLS" ] && [ "$JIRA_IMAGE_URLS" != "none" ] && [ -n "$JIRA_IMAGE_FILENAMES" ] && [ "$JIRA_IMAGE_FILENAMES" != "none" ]; then
+            # MODIFIED: Create a dedicated directory for the images.
+            echo "Creating image directory: ./jira-images"
+            mkdir -p jira-images
+            
+            IMAGES_WERE_DOWNLOADED=true
+            IFS=',' read -ra IMAGE_URL_ARRAY <<< "$JIRA_IMAGE_URLS"
+            IFS=',' read -ra IMAGE_FILENAME_ARRAY <<< "$JIRA_IMAGE_FILENAMES"
+            
+            for (( i=0; i<${#IMAGE_URL_ARRAY[@]}; i++ )); do
+              IMAGE_INDEX=$((i + 1))
+              IMG_URL=$(echo "${IMAGE_URL_ARRAY[$i]}" | xargs) 
+              ORIGINAL_FILENAME_FROM_JIRA=$(echo "${IMAGE_FILENAME_ARRAY[$i]}" | xargs)
+              if [ -z "$IMG_URL" ] || [ -z "$ORIGINAL_FILENAME_FROM_JIRA" ]; then continue; fi
+              
+              SAFE_FILENAME=$(echo "$ORIGINAL_FILENAME_FROM_JIRA" | sed 's/[^a-zA-Z0-9._-]/_/g')
+              
+              # MODIFIED: Download the image directly into the new folder.
+              echo "Downloading image ${IMAGE_INDEX} to jira-images/${SAFE_FILENAME}"
+              HTTP_STATUS=$(curl -sSL -w "%{http_code}" -o "jira-images/${SAFE_FILENAME}" -u "${JIRA_API_USER}:${JIRA_API_TOKEN}" "$IMG_URL")
+
+              if [ "$HTTP_STATUS" -lt 200 ] || [ "$HTTP_STATUS" -ge 300 ]; then
+                echo "Error downloading image ${IMAGE_INDEX} (HTTP Status: $HTTP_STATUS)."
+                rm -f "jira-images/${SAFE_FILENAME}"
+              fi
+            done
+          else
+            echo "No Jira image URLs provided. Skipping image processing."
+          fi
+          
+          echo "========================================================================"
+          echo "=== 3. CLAUDE EXECUTION ==="
+          echo "========================================================================"
           echo "Using model: $CLAUDE_MODEL"
-          echo "--- Preparing to stream prompt to Claude as non-root user 'node' ---"
-
-          # Use a subshell (...) and a pipe (|) to stream the entire prompt.
-          # This avoids creating massive environment variables and the "Argument list too long" error.
-          (
-            # First, process and stream any images.
-            if [ -n "$JIRA_IMAGE_URLS" ] && [ "$JIRA_IMAGE_URLS" != "none" ]; then
-              echo "Image URLs found. Processing and embedding images into prompt stream..."
-              IFS=',' read -ra IMAGE_URL_ARRAY <<< "$JIRA_IMAGE_URLS"
-              IFS=',' read -ra IMAGE_FILENAME_ARRAY <<< "$JIRA_IMAGE_FILENAMES"
-              for (( i=0; i<${#IMAGE_URL_ARRAY[@]}; i++ )); do
-                IMAGE_INDEX=$((i + 1))
-                IMG_URL=$(echo "${IMAGE_URL_ARRAY[$i]}" | xargs)
-                TEMP_IMG_FILE="jira_dl_image_${IMAGE_INDEX}.tmp"
-                
-                HTTP_STATUS=$(curl -sSL -w "%{http_code}" -o "$TEMP_IMG_FILE" -u "${JIRA_API_USER}:${JIRA_API_TOKEN}" "$IMG_URL")
-                
-                if [ "$HTTP_STATUS" -ge 200 ] && [ "$HTTP_STATUS" -lt 300 ] && [ -s "$TEMP_IMG_FILE" ]; then
-                  MIME_TYPE=$(file --mime-type -b "$TEMP_IMG_FILE")
-                  if [[ "$MIME_TYPE" =~ ^image\/(png|jpeg|webp|gif)$ ]]; then
-                    echo "Streaming image ${IMAGE_INDEX}..."
-                    
-                    # This Human/Assistant turn provides the image as context for the main task.
-                    # This is the standard format for providing vision context to a task.
-                    echo "Human: Please analyze this image, which is referenced in the task as VISUAL_REFERENCE_IMAGE_${IMAGE_INDEX}."
-                    echo "<image type=\"${MIME_TYPE}\" encoding=\"base64\">"
-                    # Stream the base64 data directly to the pipe, don't store it in a variable.
-                    base64 -w 0 "$TEMP_IMG_FILE"
-                    echo "</image>"
-                    echo ""
-                    echo "Assistant: Okay, I have analyzed the image and will use it as a reference for the upcoming task. Please proceed."
-                    echo ""
-                    rm -f "$TEMP_IMG_FILE"
-                  else
-                    echo "ERROR: File for image ${IMAGE_INDEX} is not a valid image. Skipping."
-                    rm -f "$TEMP_IMG_FILE"
-                  fi
-                else
-                  echo "ERROR: Could not download image ${IMAGE_INDEX} (HTTP: $HTTP_STATUS). Skipping."
-                  if [ -f "$TEMP_IMG_FILE" ]; then rm -f "$TEMP_IMG_FILE"; fi
-                fi
-              done
-            fi
-
-            # Finally, stream the main task prompt from N8N as the final "Human" turn.
-            echo "Human: ${TASK_PROMPT}"
-
-          ) | runuser -u node -- claude "${CLAUDE_CMD_ARGS[@]}"
-
+          echo "Final Claude command arguments: ${CLAUDE_CMD_ARGS[*]}"
+          echo "--- Passing full prompt from N8N to Claude's stdin as non-root user 'node' ---"
+          
+          # We run the claude command as the 'node' user to avoid the root privilege error.
+          runuser -u node -- claude "${CLAUDE_CMD_ARGS[@]}" <<< "$CLAUDE_PROMPT"
+          
           echo "Claude execution complete."
           
           echo "========================================================================"
-          echo "=== 3. GIT OPERATIONS ===" 
+          echo "=== 4. CLEANING UP DOWNLOADED IMAGES ===" 
           echo "========================================================================"
+          # MODIFIED: If images were downloaded, remove the entire folder.
+          if [ "$IMAGES_WERE_DOWNLOADED" = true ]; then
+              echo "Removing ./jira-images directory..."
+              rm -rf jira-images
+          else
+              echo "No images were downloaded, skipping cleanup."
+          fi
+          
+          echo "========================================================================"
+          echo "=== 5. GIT OPERATIONS ===" 
+          echo "========================================================================"
+          # This logic remains the same.
           if [ -n "$(git status --porcelain)" ]; then
-            echo "Changes detected. Staging, committing, and pushing..."
             git add -A
             git commit -m "feat($TICKET_ID): Apply AI-generated changes [skip ci]"
             git push -u origin "$FEATURE_BRANCH_NAME"
             echo "Pushed changes to branch '$FEATURE_BRANCH_NAME'."
             echo "changes_pushed=true" >> $GITHUB_OUTPUT
           else
-            echo "No file changes detected. Skipping commit and notification."
+            echo "No file changes detected. Skipping commit."
             echo "changes_pushed=false" >> $GITHUB_OUTPUT
           fi
           
       - name: 6. Notify N8N to Create Pull Request
         if: steps.main_script.outputs.changes_pushed == 'true'
         shell: bash
+        # This logic remains the same.
         run: |
-          # This notification step remains the same.
-          # ... (full notification logic) ...
-          echo "Notifying N8N to create a Pull Request..."
-          FEATURE_BRANCH_NAME="feature/$TICKET_ID"
-          LATEST_COMMIT_SHA=$(git rev-parse HEAD)
-          REPO_OWNER=$(echo "$GH_REPO" | cut -d'/' -f1)
-          REPO_NAME=$(echo "$GH_REPO" | cut -d'/' -f2)
-          SANITIZED_BRANCH_NAME=$(echo "$FEATURE_BRANCH_NAME" | sed 's/\//-/g')
-          PREVIEW_URL="https://$SANITIZED_BRANCH_NAME--$REPO_NAME--$REPO_OWNER.hlx.page"
-          PR_TITLE="feat($TICKET_ID): Implement feature $TICKET_ID (AI Assisted)"
-          PR_BODY=$(cat <<EOF
+          # ... (Notification logic is unchanged)
+          FEATURE_BRANCH_NAME="feature/$TICKET_ID"; LATEST_COMMIT_SHA=$(git rev-parse HEAD); REPO_OWNER=$(echo "$GH_REPO" | cut -d'/' -f1); REPO_NAME=$(echo "$GH_REPO" | cut -d'/' -f2); SANITIZED_BRANCH_NAME=$(echo "$FEATURE_BRANCH_NAME" | sed 's/\//-/g'); PREVIEW_URL="https://$SANITIZED_BRANCH_NAME--$REPO_NAME--$REPO_OWNER.hlx.page"; PR_TITLE="feat($TICKET_ID): Implement feature $TICKET_ID (AI Assisted)"; PR_BODY=$(cat <<EOF
           This Pull Request was automatically generated by the Claude AI Developer to implement ticket **$TICKET_ID**.
+
           ### URL for testing:
           - $PREVIEW_URL
+
           Commit SHA: \`$LATEST_COMMIT_SHA\`
           EOF
-          )
-          JSON_PAYLOAD=$(jq -n \
-            --arg fb "$FEATURE_BRANCH_NAME" --arg tb "$DEFAULT_BRANCH" --arg tid "$TICKET_ID" \
-            --arg commitSha "$LATEST_COMMIT_SHA" --arg repo "$GH_REPO" \
-            --arg prTitle "$PR_TITLE" --arg prBody "$PR_BODY" \
-            '{source_branch: $fb, target_branch: $tb, ticket_id: $tid, commit_sha: $commitSha, repo: $repo, pull_request_title: $prTitle, pull_request_body: $prBody}')
-          if [ -z "$N8N_MR_WEBHOOK_URL" ]; then
-            echo "Warning: N8N_PR_WEBHOOK_URL secret is not set."
-          else
-            echo "Sending payload to N8N..."
-            curl -X POST -H "Content-Type: application/json" -d "$JSON_PAYLOAD" "$N8N_MR_WEBHOOK_URL"
-          fi
+          ); JSON_PAYLOAD=$(jq -n --arg fb "$FEATURE_BRANCH_NAME" --arg tb "$DEFAULT_BRANCH" --arg tid "$TICKET_ID" --arg commitSha "$LATEST_COMMIT_SHA" --arg repo "$GH_REPO" --arg prTitle "$PR_TITLE" --arg prBody "$PR_BODY" '{source_branch: $fb, target_branch: $tb, ticket_id: $tid, commit_sha: $commitSha, repo: $repo, pull_request_title: $prTitle, pull_request_body: $prBody}'); if [ -z "$N8N_MR_WEBHOOK_URL" ]; then echo "Warning: N8N_PR_WEBHOOK_URL secret is not set."; else curl -s -o /dev/null -w "%{http_code}" -X POST -H "Content-Type: application/json" -d "$JSON_PAYLOAD" "$N8N_MR_WEBHOOK_URL"; fi
