@@ -19,7 +19,7 @@ on:
       CLAUDE_MODEL:
         description: 'The AI model to use (e.g., claude-3-5-sonnet-20240620).'
         required: true
-        default: 'claude-3-5-sonnet-20240620'
+        default: 'claude-sonnet-4-20250514'
       JIRA_IMAGE_URLS:
         description: 'Comma-separated list of image URLs from Jira.'
         required: false
