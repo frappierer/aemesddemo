@@ -1,14 +1,5 @@
-# .github/workflows/codex-auto.yml
-name: Codex Full Auto
+name: Codex Full Auto (with Verified Flags)
 
-# -----------------------------------------------------------------------------
-# TRIGGER CONFIGURATION
-# -----------------------------------------------------------------------------
-# This workflow can be triggered in two ways:
-# 1. `workflow_dispatch`: Manually from the GitHub Actions UI.
-#    - Allows you to fill in the parameters (prompt, ticket ID, etc.) in a form.
-# 2. `repository_dispatch`: Via a webhook/API call from an external service like N8N.
-#    - N8N would send a POST request to the GitHub API to trigger this.
 on:
   workflow_dispatch:
     inputs:
@@ -31,246 +22,180 @@ on:
         description: 'Comma-separated list of original image filenames from Jira.'
         required: false
   repository_dispatch:
-    types: [codex-run] # The custom event name N8N will use
+    types: [codex-run]
 
 jobs:
   codex-full-auto:
-    # Use a standard Ubuntu runner and specify the Node.js Docker container
     runs-on: ubuntu-latest
     container: node:latest
-    
-    # -----------------------------------------------------------------------------
-    # ENVIRONMENT VARIABLES
-    # -----------------------------------------------------------------------------
-    # These variables will be available to all steps in the job.
+
     env:
-      # Secrets (must be configured in GitHub repository settings)
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       N8N_MR_WEBHOOK_URL: ${{ secrets.N8N_PR_WEBHOOK_URL }}
       JIRA_API_USER: ${{ secrets.JIRA_API_USER }}
       JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
-      
-      # The | is only needed for the prompt because its default value contains a colon.
+      CODEX_PUSH_TOKEN: ${{ secrets.CODEX_PUSH_TOKEN }}
       CODEX_PROMPT: |
-        ${{ github.event.inputs.CODEX_PROMPT || github.event.client_payload.CODEX_PROMPT || 'Default prompt: Create a simple placeholder file.' }}
-      
-      # The rest of the variables can be defined on a single line. This prevents extra newlines.
-      TICKET_ID: ${{ github.event.inputs.TICKET_ID || github.event.client_payload.TICKET_ID || 'default-ticket-id' }}
-      CODEX_MODEL: ${{ github.event.inputs.CODEX_MODEL || github.event.client_payload.CODEX_MODEL || 'o3' }}
-      JIRA_IMAGE_URLS: ${{ github.event.inputs.JIRA_IMAGE_URLS || github.event.client_payload.JIRA_IMAGE_URLS || '' }}
-      JIRA_IMAGE_FILENAMES: ${{ github.event.inputs.JIRA_IMAGE_FILENAMES || github.event.client_payload.JIRA_IMAGE_FILENAMES || '' }}
-
-      # GitHub-specific environment variables for use in the script
+        ${{ github.event.inputs.CODEX_PROMPT || github.event.client_payload.CODEX_PROMPT }}
+      TICKET_ID: ${{ github.event.inputs.TICKET_ID || github.event.client_payload.TICKET_ID }}
+      CODEX_MODEL: ${{ github.event.inputs.CODEX_MODEL || github.event.client_payload.CODEX_MODEL }}
+      JIRA_IMAGE_URLS: ${{ github.event.inputs.JIRA_IMAGE_URLS || github.event.client_payload.JIRA_IMAGE_URLS }}
+      JIRA_IMAGE_FILENAMES: ${{ github.event.inputs.JIRA_IMAGE_FILENAMES || github.event.client_payload.JIRA_IMAGE_FILENAMES }}
       GH_REPO: ${{ github.repository }}
       DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+      AEM_URL: ${{ secrets.AEM_URL }}
+      AEM_USERNAME: ${{ secrets.AEM_USERNAME }}
+      AEM_PASSWORD: ${{ secrets.AEM_PASSWORD }}
+      AEM_SRC_PATH: ${{ secrets.AEM_SRC_PATH }}
+      AEM_DEST_PARENT_PATH: ${{ secrets.AEM_DEST_PARENT_PATH }}
 
     steps:
       - name: 1. Install System Dependencies
         run: |
-          echo "Updating package lists and installing dependencies..."
-          apt-get update -y
-          # curl and git are usually pre-installed, but jq and sed are good to ensure.
-          apt-get install -y --no-install-recommends curl jq sed
+          apt-get update -y && apt-get install -y --no-install-recommends curl jq sed file
 
       - name: 2. Checkout Repository
         uses: actions/checkout@v4
         with:
-          # A Personal Access Token (PAT) is needed to push a new branch.
-          # The default GITHUB_TOKEN has restricted permissions.
-          token: ${{ secrets.CODEX_PUSH_TOKEN }}
-          # Fetch all history so we can branch from the latest default branch.
+          token: ${{ env.CODEX_PUSH_TOKEN }}
           fetch-depth: 0
 
       - name: 3. Configure Git and Install Codex CLI
         run: |
-          # The ownership fix has been MOVED to the next step.
-          
-          echo "Configuring Git..."
           git config --global user.name "GitHub Actions Bot"
           git config --global user.email "actions-bot@github.com"
-          
-          echo "Installing @openai/codex..."
           npm install -g @openai/codex
-          
-      - name: 4. Execute Main AI and Git Logic
+
+      - name: 4. Install Project Dependencies
+        run: npm install
+
+      - name: 5. Set Workspace Permissions for Non-Root User
+        run: |
+          chown -R node:node "$GITHUB_WORKSPACE"
+
+      - name: 6. Execute Main AI, Build, and Git Logic
         id: main_script
         shell: bash
         run: |
-          # FIX: This command MUST be in the same step as the git commands.
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
-
-          # The entire logic script from GitLab is placed here.
-          echo "========================================================================"
-          echo "=== 1. INITIAL SETUP & BRANCHING ==="
-          echo "========================================================================"
-          echo "Received Ticket ID: $TICKET_ID"
           FEATURE_BRANCH_NAME="feature/$TICKET_ID"
-          echo "Target feature branch: $FEATURE_BRANCH_NAME"
-          echo "Default repository branch: $DEFAULT_BRANCH"
-          
-          echo "Creating and switching to feature branch: $FEATURE_BRANCH_NAME from origin/$DEFAULT_BRANCH..."
           git checkout -b "$FEATURE_BRANCH_NAME" "origin/$DEFAULT_BRANCH"
+
+          DEMO_DATA_INSTRUCTIONS=$(cat <<'EOF'
+
+          ---
+          **Additional Task: Create Demo Data**
+          After creating the component files as requested above, you MUST ALSO perform the following action:
+          1.  Create a new file named exactly `demo_data.json` inside the new component's directory (e.g., `blocks/your-new-component/demo_data.json`).
+          2.  The content of this file MUST be a single, raw JSON object. Do not include any explanations or markdown formatting.
+          3.  The keys of the JSON object must correspond to the `name` properties of the fields defined in the component's `_component.json` or equivalent model file you created.
+          4.  Populate the JSON with realistic, high-quality demo content suitable for the component.
           
-          echo "========================================================================"
-          echo "=== 2. IMAGE PROCESSING (Using Jira Filenames) ==="
-          echo "========================================================================"
-          CODEX_CMD_ARGS=("--auto-edit" "--quiet" "-m" "$CODEX_MODEL" "--dangerously-auto-approve-everything")
-          DOWNLOADED_IMAGE_FILES_COUNT=0
-          if [ -n "$JIRA_IMAGE_URLS" ] && [ "$JIRA_IMAGE_URLS" != "none" ] && \
-             [ -n "$JIRA_IMAGE_FILENAMES" ] && [ "$JIRA_IMAGE_FILENAMES" != "none" ]; then
-            echo "Processing Jira image URLs: $JIRA_IMAGE_URLS"
-            echo "Using Jira image filenames: $JIRA_IMAGE_FILENAMES"
+          This `demo_data.json` file is critical for the automation pipeline.
+          EOF
+          )
+          
+          FINAL_PROMPT="${CODEX_PROMPT}${DEMO_DATA_INSTRUCTIONS}"
+
+          # CORRECT: This is the only set of automation flags supported by the installed CLI.
+          CODEX_CMD_ARGS=("-m" "$CODEX_MODEL" "--dangerously-auto-approve-everything")
+
+          # Image Processing
+          if [ -n "$JIRA_IMAGE_URLS" ] && [ "$JIRA_IMAGE_URLS" != "none" ]; then
             IFS=',' read -ra IMAGE_URL_ARRAY <<< "$JIRA_IMAGE_URLS"
             IFS=',' read -ra IMAGE_FILENAME_ARRAY <<< "$JIRA_IMAGE_FILENAMES"
-            if [ "${#IMAGE_URL_ARRAY[@]}" -ne "${#IMAGE_FILENAME_ARRAY[@]}" ]; then
-              echo "Error: Mismatch between number of image URLs (${#IMAGE_URL_ARRAY[@]}) and filenames (${#IMAGE_FILENAME_ARRAY[@]}). Skipping image processing."
-            else
-              for (( i=0; i<${#IMAGE_URL_ARRAY[@]}; i++ )); do
-                IMAGE_INDEX=$((i + 1))
-                IMG_URL_RAW="${IMAGE_URL_ARRAY[$i]}"
-                ORIGINAL_FILENAME_FROM_JIRA_RAW="${IMAGE_FILENAME_ARRAY[$i]}"
-                IMG_URL=$(echo "$IMG_URL_RAW" | xargs) 
-                ORIGINAL_FILENAME_FROM_JIRA=$(echo "$ORIGINAL_FILENAME_FROM_JIRA_RAW" | xargs)
-                if [ -z "$IMG_URL" ] || [ -z "$ORIGINAL_FILENAME_FROM_JIRA" ]; then
-                  echo "Skipping empty image URL or filename at index $IMAGE_INDEX."
-                  continue
-                fi
-                SAFE_FILENAME_BASE=$(echo "$ORIGINAL_FILENAME_FROM_JIRA" | sed 's/[^a-zA-Z0-9._-]/_/g')
-                FINAL_IMAGE_NAME_IN_CI="jira_dl_image_${IMAGE_INDEX}_${SAFE_FILENAME_BASE}"
-                FINAL_IMAGE_NAME_IN_CI="${FINAL_IMAGE_NAME_IN_CI:0:100}"
-                echo "Attempting to download image ${IMAGE_INDEX} (Original: $ORIGINAL_FILENAME_FROM_JIRA) from: $IMG_URL to $FINAL_IMAGE_NAME_IN_CI"
-                CURL_HTTP_OPTS=("-sSL" "-w" "%{http_code}" "-o" "$FINAL_IMAGE_NAME_IN_CI")
-                CURL_AUTH_OPTS=()
-                if [ -n "$JIRA_API_USER" ] && [ -n "$JIRA_API_TOKEN" ]; then 
-                  CURL_AUTH_OPTS+=("-u" "${JIRA_API_USER}:${JIRA_API_TOKEN}"); 
-                fi
-                HTTP_STATUS=$(curl "${CURL_HTTP_OPTS[@]}" "${CURL_AUTH_OPTS[@]}" "$IMG_URL")
-                
-                # --- START OF NEW VALIDATION LOGIC ---
-                if [ "$HTTP_STATUS" -ge 200 ] && [ "$HTTP_STATUS" -lt 300 ] && [ -s "$FINAL_IMAGE_NAME_IN_CI" ]; then
-                  MIME_TYPE=$(file --mime-type -b "$FINAL_IMAGE_NAME_IN_CI")
-                  echo "Validation: Downloaded file reports MIME type: $MIME_TYPE"
-                  
-                  if [[ "$MIME_TYPE" =~ ^image\/(png|jpeg|webp|gif)$ ]]; then
-                    echo "Image ${IMAGE_INDEX} is a valid image type. Adding to Codex."
-                    CODEX_CMD_ARGS+=("-i" "$FINAL_IMAGE_NAME_IN_CI")
-                    DOWNLOADED_IMAGE_FILES_COUNT=$((DOWNLOADED_IMAGE_FILES_COUNT + 1))
-                  else
-                    echo "ERROR: Image ${IMAGE_INDEX} is not a valid image (MIME: $MIME_TYPE). It is likely an auth error page from Jira. Skipping file."
-                    head -c 300 "$FINAL_IMAGE_NAME_IN_CI"; echo "" # Print file head for debugging
-                    rm -f "$FINAL_IMAGE_NAME_IN_CI" # Clean up invalid file
-                  fi
-                # --- END OF NEW VALIDATION LOGIC ---
-                else
-                  echo "Error downloading image ${IMAGE_INDEX} (Original: $ORIGINAL_FILENAME_FROM_JIRA) from $IMG_URL (HTTP Status: $HTTP_STATUS)."
-                  if [ -f "$FINAL_IMAGE_NAME_IN_CI" ]; then 
-                    echo "Content of failed download attempt ($FINAL_IMAGE_NAME_IN_CI) (first 200 bytes):"
-                    head -c 200 "$FINAL_IMAGE_NAME_IN_CI"; echo ""; rm -f "$FINAL_IMAGE_NAME_IN_CI"; 
-                  fi
-                fi
-              done
-            fi
-            echo "Total images successfully processed and added to Codex arguments: $DOWNLOADED_IMAGE_FILES_COUNT"
-          else
-            echo "No Jira image URLs and/or filenames provided, or one of them was 'none'."
+            for (( i=0; i<${#IMAGE_URL_ARRAY[@]}; i++ )); do
+              IMG_URL=$(echo "${IMAGE_URL_ARRAY[$i]}" | xargs)
+              SAFE_FILENAME=$(echo "${IMAGE_FILENAME_ARRAY[$i]}" | xargs | sed 's/[^a-zA-Z0-9._-]/_/g')
+              if [ -z "$IMG_URL" ] || [ -z "$SAFE_FILENAME" ]; then continue; fi
+              DOWNLOAD_PATH="jira_dl_image_${i}_${SAFE_FILENAME}"
+              HTTP_STATUS=$(curl -sSL -w "%{http_code}" -o "$DOWNLOAD_PATH" -u "${JIRA_API_USER}:${JIRA_API_TOKEN}" "$IMG_URL")
+              if [ "$HTTP_STATUS" -eq 200 ] && [ -s "$DOWNLOAD_PATH" ]; then
+                CODEX_CMD_ARGS+=("-i" "$DOWNLOAD_PATH")
+              else
+                rm -f "$DOWNLOAD_PATH"
+              fi
+            done
           fi
-          
-          echo "========================================================================"
-          echo "=== 3. CODEX EXECUTION ==="
-          echo "========================================================================"
-          echo "Received prompt (first 200 chars): $(echo "$CODEX_PROMPT" | head -c 200)..."
-          echo "Using model for -m flag: $CODEX_MODEL"
-          echo "Final Codex command arguments: ${CODEX_CMD_ARGS[*]}"
-          
-          codex "${CODEX_CMD_ARGS[@]}" "$CODEX_PROMPT" 
-          
-          echo "Codex execution presumably complete."
-          
-          echo "========================================================================"
-          echo "=== 4. CLEANING UP DOWNLOADED IMAGES ===" 
-          echo "========================================================================"
-          if [ "$DOWNLOADED_IMAGE_FILES_COUNT" -gt 0 ]; then
-              echo "Removing $DOWNLOADED_IMAGE_FILES_COUNT downloaded Jira image(s) used for AI guidance..."
-              rm -f jira_dl_image_* 
-              echo "Downloaded Jira images removed."
-          else
-              echo "No images were marked as downloaded, skipping image cleanup."
-          fi
-          
-          echo "========================================================================"
-          echo "=== 5. GIT OPERATIONS ===" 
-          echo "========================================================================"
-          echo "Checking for file changes..."
-          GIT_STATUS_OUTPUT=$(git status --porcelain)
 
-          if [ -n "$GIT_STATUS_OUTPUT" ]; then
-            echo "Changes detected. Staging, committing, and pushing to $FEATURE_BRANCH_NAME..."
+          # Codex Execution
+          codex "${CODEX_CMD_ARGS[@]}" "$FINAL_PROMPT"
+          echo "Codex execution complete."
+          rm -f jira_dl_image_*
+
+          # Compiling & Git Ops
+          npm run build:json
+          if [ -n "$(git status --porcelain)" ]; then
             git add -A
-            COMMIT_MESSAGE="feat($TICKET_ID): Apply AI-generated changes for $TICKET_ID [skip ci]"
-            git commit -m "$COMMIT_MESSAGE"
+            git commit -m "feat($TICKET_ID): Apply AI-generated changes [skip ci]"
             git push -u origin "$FEATURE_BRANCH_NAME"
-            echo "Pushed changes to new branch '$FEATURE_BRANCH_NAME'."
             echo "changes_pushed=true" >> $GITHUB_OUTPUT
           else
-            echo "No file changes were detected. Skipping commit and notification."
+            echo "No file changes detected."
             echo "changes_pushed=false" >> $GITHUB_OUTPUT
           fi
-          
-      - name: 5. Notify N8N to Create Pull Request
+
+      - name: 7. Sanitize Ticket ID for AEM
+        id: sanitize
+        if: steps.main_script.outputs.changes_pushed == 'true'
+        run: |
+          SANITIZED_NAME=$(echo "${TICKET_ID}" | sed 's/\//-/g')
+          echo "aem_page_name=$SANITIZED_NAME" >> $GITHUB_OUTPUT
+
+      - name: 8. Wait for EDS Deployment
+        if: steps.main_script.outputs.changes_pushed == 'true'
+        run: "sleep 10"
+
+      - name: 9. Create AEM Demo Page
+        if: steps.main_script.outputs.changes_pushed == 'true'
+        run: |
+          curl --fail-with-body "${AEM_URL}/bin/wcmcommand" -u "${AEM_USERNAME}:${AEM_PASSWORD}" -H 'Content-Type: application/x-www-form-urlencoded; charset=UTF-8' --data-raw "_charset_=UTF-8&cmd=copyPage&srcPath=${AEM_SRC_PATH}&destParentPath=${AEM_DEST_PARENT_PATH}&before=&destName=${{ steps.sanitize.outputs.aem_page_name }}&shallow=false"
+
+      - name: 10. Update AEM Page Title
+        if: steps.main_script.outputs.changes_pushed == 'true'
+        run: |
+          curl --fail-with-body "${AEM_URL}${AEM_DEST_PARENT_PATH}/${{ steps.sanitize.outputs.aem_page_name }}/jcr:content" -u "${AEM_USERNAME}:${AEM_PASSWORD}" -H 'Content-Type: application/x-www-form-urlencoded; charset=UTF-8' --data-raw "jcr:title=${{ steps.sanitize.outputs.aem_page_name }}"
+
+      - name: 11. Add New Component to AEM Page from Demo Data
         if: steps.main_script.outputs.changes_pushed == 'true'
         shell: bash
         run: |
-          echo "========================================================================"
-          echo "=== 6. NOTIFYING N8N FOR PULL REQUEST ==="
-          echo "========================================================================"
-          FEATURE_BRANCH_NAME="feature/$TICKET_ID"
-          LATEST_COMMIT_SHA=$(git rev-parse HEAD)
+          echo "--- Finding generated demo_data.json ---"
+          DEMO_FILE_PATH=$(git diff --name-only HEAD~1 HEAD | grep 'demo_data.json' | head -n 1)
           
-          # --- START OF CORRECTED URL LOGIC ---
-          # 1. Sanitize the branch name (replace '/' with '-'). This is still correct.
-          SANITIZED_BRANCH_NAME=$(echo "$FEATURE_BRANCH_NAME" | sed 's/\//-/g')
+          if [ -z "$DEMO_FILE_PATH" ]; then
+            echo "Warning: No demo_data.json file was created by the AI. Skipping component creation."
+            exit 0
+          fi
+          
+          echo "Found demo data file at: $DEMO_FILE_PATH"
+          COMPONENT_NAME=$(basename "$(dirname "$DEMO_FILE_PATH")")
+          DEMO_JSON=$(cat "$DEMO_FILE_PATH")
 
-          # 2. Extract owner and repo name from the GH_REPO variable (e.g., "frappierer/aemesddemo")
-          REPO_OWNER=$(echo "$GH_REPO" | cut -d'/' -f1)
-          REPO_NAME=$(echo "$GH_REPO" | cut -d'/' -f2)
+          if ! echo "$DEMO_JSON" | jq -e . >/dev/null 2>&1; then
+            echo "::error::File at $DEMO_FILE_PATH does not contain valid JSON. Cannot proceed."
+            exit 1
+          fi
 
-          # 3. Construct the predictable preview URL using the correct format.
-          PREVIEW_URL="https://$SANITIZED_BRANCH_NAME--$REPO_NAME--$REPO_OWNER.hlx.page"
-          echo "Constructed Preview URL: $PREVIEW_URL"
+          echo "--- Preparing data for AEM API call ---"
+          FORM_DATA=$(echo "$DEMO_JSON" | jq -r 'to_entries | map("\(.key)=\(.value|tostring|@uri)") | join("&")')
+          SLING_RESOURCETYPE="${GH_REPO}/blocks/${COMPONENT_NAME}"
+          FINAL_FORM_DATA="${FORM_DATA}&sling:resourceType=${SLING_RESOURCETYPE}"
+          
+          AEM_PAGE_NAME="${{ steps.sanitize.outputs.aem_page_name }}"
+          TARGET_URL="${AEM_URL}${AEM_DEST_PARENT_PATH}/${AEM_PAGE_NAME}/jcr:content/root/section_0/block"
+          
+          echo "Posting component '$COMPONENT_NAME' to AEM at: $TARGET_URL"
+          curl -v --fail-with-body "$TARGET_URL" -u "${AEM_USERNAME}:${AEM_PASSWORD}" -H "Content-Type: application/x-www-form-urlencoded; charset=UTF-8" --data-raw "$FINAL_FORM_DATA"
 
-          # 4. Create the title and body for the pull request.
-          PR_TITLE="feat($TICKET_ID): Implement feature $TICKET_ID (AI Assisted)"
-          PR_BODY=$(cat <<EOF
-          This Pull Request was automatically generated to implement ticket **$TICKET_ID**.
-
+      - name: 12. Notify N8N to Create Pull Request
+        if: steps.main_script.outputs.changes_pushed == 'true'
+        shell: bash
+        run: |
+          FEATURE_BRANCH_NAME="feature/$TICKET_ID"; LATEST_COMMIT_SHA=$(git rev-parse HEAD); REPO_OWNER=$(echo "$GH_REPO" | cut -d'/' -f1); REPO_NAME=$(echo "$GH_REPO" | cut -d'/' -f2); SANITIZED_BRANCH_NAME=$(echo "$FEATURE_BRANCH_NAME" | sed 's/\//-/g'); PREVIEW_URL="https://$SANITIZED_BRANCH_NAME--$REPO_NAME--$REPO_OWNER.hlx.page"; PR_TITLE="feat($TICKET_ID): Implement feature $TICKET_ID (AI Assisted)"; PR_BODY=$(cat <<EOF
+          This Pull Request was automatically generated by the Codex AI Developer to implement ticket **$TICKET_ID**.
           ### URL for testing:
           - $PREVIEW_URL
-
           Commit SHA: \`$LATEST_COMMIT_SHA\`
           EOF
-          )
-          # --- END OF CORRECTED URL LOGIC ---
-
-          # 5. We use environment variables set by GitHub Actions and pass the new PR Body.
-          JSON_PAYLOAD=$(jq -n \
-            --arg fb "$FEATURE_BRANCH_NAME" \
-            --arg tb "$DEFAULT_BRANCH" \
-            --arg tid "$TICKET_ID" \
-            --arg commitSha "$LATEST_COMMIT_SHA" \
-            --arg repo "$GH_REPO" \
-            --arg prTitle "$PR_TITLE" \
-            --arg prBody "$PR_BODY" \
-            '{source_branch: $fb, target_branch: $tb, ticket_id: $tid, commit_sha: $commitSha, repo: $repo, pull_request_title: $prTitle, pull_request_body: $prBody}')
-
-          if [ -z "$N8N_MR_WEBHOOK_URL" ]; then
-            echo "Warning: N8N_PR_WEBHOOK_URL secret is not set. Cannot notify N8N."
-          else
-            echo "Sending payload to N8N webhook:"
-            echo "$JSON_PAYLOAD"
-            curl_response_code=$(curl -X POST -H "Content-Type: application/json" -d "$JSON_PAYLOAD" -w "%{http_code}" -s -o /dev/null "$N8N_MR_WEBHOOK_URL")
-            if [ "$curl_response_code" -ge 200 ] && [ "$curl_response_code" -lt 300 ]; then
-              echo "N8N notification sent successfully (HTTP $curl_response_code)."
-            else
-              echo "ERROR: N8N notification failed (HTTP $curl_response_code)."
-            fi
-          fi
+          ); JSON_PAYLOAD=$(jq -n --arg fb "$FEATURE_BRANCH_NAME" --arg tb "$DEFAULT_BRANCH" --arg tid "$TICKET_ID" --arg commitSha "$LATEST_COMMIT_SHA" --arg repo "$GH_REPO" --arg prTitle "$PR_TITLE" --arg prBody "$PR_BODY" '{source_branch: $fb, target_branch: $tb, ticket_id: $tid, commit_sha: $commitSha, repo: $repo, pull_request_title: $prTitle, pull_request_body: $prBody}'); if [ -z "$N8N_MR_WEBHOOK_URL" ]; then echo "Warning: N8N_PR_WEBHOOK_URL secret is not set."; else curl -s -o /dev/null -w "%{http_code}" -X POST -H "Content-Type: application/json" -d "$JSON_PAYLOAD" "$N8N_MR_WEBHOOK_URL"; fi
